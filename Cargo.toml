@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+aes = "0.8.4"
+ecb = { version = "0.1.2", features = ["alloc"] }
+quick-xml = { version = "0.38.3", features = ["serialize"] }
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["full"] }
