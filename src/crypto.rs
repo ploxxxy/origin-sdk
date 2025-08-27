@@ -4,6 +4,7 @@ use aes::cipher::{
     block_padding::{Pkcs7, UnpadError},
 };
 use std::{error::Error, fmt};
+use tracing::debug;
 
 type EcbEncryptor = ecb::Encryptor<aes::Aes128>;
 type EcbDecryptor = ecb::Decryptor<aes::Aes128>;
@@ -68,6 +69,7 @@ impl Crypto {
             }
         }
 
+        debug!("Setting new encryption key: {:?}", hex::encode(key));
         self.key = key;
     }
 
@@ -100,6 +102,7 @@ impl Crypto {
         let response_bytes = response_str.as_bytes();
 
         let seed = ((response_bytes[0] as u32) << 8) | (response_bytes[1] as u32);
+        debug!("Setting new random seed: {}", seed);
         self.set_key(seed);
 
         Ok(response_str)

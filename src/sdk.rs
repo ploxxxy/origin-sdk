@@ -20,6 +20,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
+use tracing::{debug, error, info};
 
 use crate::{
     crypto::Crypto,
@@ -59,7 +60,7 @@ impl OriginSdk {
         let mut writer = write_half;
         let mut crypto = Crypto::new(0);
 
-        Self::perform_handshake(&mut reader, &mut writer, &mut crypto).await?;
+        Self::perform_challenge(&mut reader, &mut writer, &mut crypto).await?;
 
         let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
@@ -83,7 +84,7 @@ impl OriginSdk {
         Ok((sdk, event_rx))
     }
 
-    async fn perform_handshake(
+    async fn perform_challenge(
         reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         crypto: &mut Crypto,
@@ -98,7 +99,7 @@ impl OriginSdk {
                 match lsx.message {
                     Message::Event(event) => {
                         if let EventBody::Challenge(challenge) = event.body {
-                            println!("Challenge key: {}", challenge.key);
+                            debug!("Challenge key: {}", challenge.key);
 
                             let response_str = crypto.prepare_challenge_response(&challenge.key)?;
                             let challenge_response = ChallengeResponse {
@@ -156,9 +157,8 @@ impl OriginSdk {
                 match lsx.message {
                     Message::Response(response) => match response.body {
                         ResponseBody::ChallengeAccepted(body) => {
-                            println!("Handshake successful!");
-
-                            println!("Challenge response: {:#?}", body.response);
+                            info!("Challenge accepted");
+                            debug!("Received challenge response: {:#?}", body.response);
 
                             // TODO: check if server response key matches our response key
 
@@ -191,24 +191,24 @@ impl OriginSdk {
 
                     let str = String::from_utf8_lossy(&data);
                     let Ok(buf) = hex::decode(str.as_ref()) else {
-                        println!("Failed to decode hex: {}", str);
+                        error!("Failed to decode hex: {}", str);
                         continue;
                     };
 
                     let Ok(xml) = crypto.decrypt(&buf) else {
-                        println!("Failed to decrypt");
+                        error!("Failed to decrypt");
                         continue;
                     };
 
                     let Ok(lsx): Result<Lsx, _> = quick_xml::de::from_str(&xml) else {
-                        println!("Failed to parse XML: {}", xml);
+                        error!("Failed to parse XML: {}", xml);
                         continue;
                     };
 
                     match lsx.message {
                         Message::Event(event) => {
                             if let Err(e) = event_tx.send(event).await {
-                                println!("Failed to send event: {}", e);
+                                error!("Failed to send event: {}", e);
                             }
                         }
                         Message::Response(response) => {
@@ -223,7 +223,7 @@ impl OriginSdk {
                     }
                 }
                 Err(e) => {
-                    println!("Error reading message: {}", e);
+                    error!("Error reading message: {}", e);
                     break;
                 }
             }
