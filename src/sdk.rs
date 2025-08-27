@@ -30,9 +30,10 @@ use crate::{
     },
 };
 
+type SdkError = Box<dyn Error + Send + Sync>;
 type PendingRequests = Arc<Mutex<HashMap<u64, Sender<Response>>>>;
 
-pub struct TcpClient {
+pub struct OriginSdk {
     writer: Arc<Mutex<OwnedWriteHalf>>,
     reader_handle: JoinHandle<()>,
     pending_requests: PendingRequests,
@@ -40,8 +41,8 @@ pub struct TcpClient {
     crypto: Crypto,
 }
 
-impl TcpClient {
-    pub async fn connect(address: &str) -> Result<Self, Box<dyn Error>> {
+impl OriginSdk {
+    pub async fn connect(address: &str) -> Result<Self, SdkError> {
         let stream = TcpStream::connect(address).await?;
         let (read_half, write_half) = stream.into_split();
 
@@ -61,7 +62,7 @@ impl TcpClient {
             ))
         };
 
-        Ok(TcpClient {
+        Ok(OriginSdk {
             writer: Arc::new(Mutex::new(writer)),
             reader_handle,
             pending_requests,
@@ -74,8 +75,7 @@ impl TcpClient {
         reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         crypto: &mut Crypto,
-        // writer: &mut OwnedWriteHalf,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), SdkError> {
         loop {
             let data = Self::read_message(reader).await?;
 
@@ -88,8 +88,8 @@ impl TcpClient {
                         if let EventBody::Challenge(challenge) = event.body {
                             println!("Challenge key: {}", challenge.key);
 
-                            let response_key = crypto.encrypt(challenge.key.clone())?;
-                            let response_str = Crypto::bytes_to_hex(&response_key);
+                            let response_key = crypto.encrypt(challenge.key.clone()).unwrap();
+                            let response_str = hex::encode(&response_key);
 
                             let response_bytes = response_str.as_bytes();
 
@@ -132,7 +132,7 @@ impl TcpClient {
         reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         challenge_response: ChallengeResponse,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), SdkError> {
         let request = Request {
             recipient: "EALS".to_string(),
             id: "0".to_string(),
@@ -188,10 +188,45 @@ impl TcpClient {
                 Ok(data) => {
                     if data.len() > 0 {
                         let str = String::from_utf8_lossy(&data);
-                        let arr = Crypto::hex_to_bytes(&str).unwrap();
-                        let xml = crypto.decrypt(arr).unwrap();
 
-                        println!("{:#?}", xml);
+                        let arr = match hex::decode(str.as_ref()) {
+                            Ok(arr) => arr,
+                            Err(e) => {
+                                println!("Failed to decode hex: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let xml = match crypto.decrypt(arr) {
+                            Ok(xml) => xml,
+                            Err(e) => {
+                                println!("Failed to decrypt: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let lsx: Lsx = match quick_xml::de::from_str(&xml) {
+                            Ok(lsx) => lsx,
+                            Err(e) => {
+                                println!("Failed to parse XML: {}", e);
+                                continue;
+                            }
+                        };
+
+                        match lsx.message {
+                            Message::Event(event) => {
+                                println!("Received event from {}", event.sender);
+                            }
+                            Message::Response(response) => {
+                                if let Ok(id) = response.id.parse::<u64>() {
+                                    let mut pending = pending_requests.lock().await;
+                                    if let Some(tx) = pending.remove(&id) {
+                                        let _ = tx.send(response);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 Err(e) => {
@@ -202,12 +237,9 @@ impl TcpClient {
         }
     }
 
-    async fn read_message(
-        reader: &mut BufReader<OwnedReadHalf>,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    async fn read_message(reader: &mut BufReader<OwnedReadHalf>) -> Result<Vec<u8>, SdkError> {
         let mut buffer = Vec::new();
 
-        // let _ = reader.read_until(0x00, &mut buffer);
         loop {
             let byte = reader.read_u8().await?;
 
@@ -225,7 +257,7 @@ impl TcpClient {
         &self,
         body: RequestBody,
         recipient: &str,
-    ) -> Result<ResponseBody, Box<dyn Error>> {
+    ) -> Result<ResponseBody, SdkError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -246,7 +278,7 @@ impl TcpClient {
 
         let serialized = quick_xml::se::to_string(&lsx)?;
         let encrypted = self.crypto.encrypt(serialized).unwrap();
-        let hex = Crypto::bytes_to_hex(&encrypted);
+        let hex = hex::encode(&encrypted);
 
         {
             let mut writer = self.writer.lock().await;
@@ -267,9 +299,7 @@ impl TcpClient {
         }
     }
 
-    pub async fn get_internet_connected_state(
-        &self,
-    ) -> Result<InternetConnectedState, Box<dyn Error>> {
+    pub async fn get_internet_connected_state(&self) -> Result<InternetConnectedState, SdkError> {
         let request = GetInternetConnectedState {};
         let response = self
             .send_request(RequestBody::GetInternetConnectedState(request), "EbisuSDK")

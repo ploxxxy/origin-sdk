@@ -1,14 +1,42 @@
 use crate::random::Random;
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, block_padding::Pkcs7};
-use std::error::Error;
+use aes::cipher::{
+    BlockDecryptMut, BlockEncryptMut, KeyInit,
+    block_padding::{Pkcs7, UnpadError},
+};
+use std::{error::Error, fmt};
 
-type Aes128EcbEnc = ecb::Encryptor<aes::Aes128>;
-type Aes128EcbDec = ecb::Decryptor<aes::Aes128>;
+type EcbEncryptor = ecb::Encryptor<aes::Aes128>;
+type EcbDecryptor = ecb::Decryptor<aes::Aes128>;
 
 const KEY_SIZE: usize = 16;
 const DEFAULT_SEED: u32 = 7;
 
-#[derive(Clone)]
+#[derive(Debug)]
+pub enum CryptoError {
+    EmptyInput,
+    DecryptionFailed(String),
+    Utf8Error(std::string::FromUtf8Error),
+}
+
+impl fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CryptoError::EmptyInput => write!(f, "Input cannot be empty"),
+            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {}", msg),
+            CryptoError::Utf8Error(err) => write!(f, "UTF-8 conversion error: {}", err),
+        }
+    }
+}
+
+impl Error for CryptoError {}
+
+impl From<std::string::FromUtf8Error> for CryptoError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        CryptoError::Utf8Error(err)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Crypto {
     key: [u8; KEY_SIZE],
 }
@@ -27,7 +55,6 @@ impl Crypto {
         let mut key = [0u8; KEY_SIZE];
 
         if seed == 0 {
-            // generate default key [0, 1, 2, ..., 15]
             for (i, byte) in key.iter_mut().enumerate() {
                 *byte = i as u8
             }
@@ -36,74 +63,35 @@ impl Crypto {
             let new_seed = rng.next().wrapping_add(seed);
             rng.set_seed(new_seed);
 
-            for (_, byte) in key.iter_mut().enumerate() {
+            for byte in key.iter_mut() {
                 *byte = rng.next() as u8
             }
         }
 
-        // println!("new key: {:?}", Crypto::byte_array_to_string(&key));
-        println!("new key: {:?}", (&key));
-
         self.key = key;
     }
 
-    fn encrypt_string_to_bytes(
-        plain_text: String,
-        key: [u8; KEY_SIZE],
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn encrypt(&self, plain_text: String) -> Result<Vec<u8>, CryptoError> {
         if plain_text.is_empty() {
-            return Err("plain_text cannot be empty".into());
+            return Err(CryptoError::EmptyInput);
         }
 
-        let res =
-            Aes128EcbEnc::new(&key.into()).encrypt_padded_vec_mut::<Pkcs7>(plain_text.as_bytes());
+        let res = EcbEncryptor::new(&self.key.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(plain_text.as_bytes());
 
         Ok(res)
     }
 
-    pub fn encrypt(&self, plain_text: String) -> Result<Vec<u8>, Box<dyn Error>> {
-        Self::encrypt_string_to_bytes(plain_text, self.key)
-    }
-
-    fn decrypt_string_from_bytes(
-        cipher_text: Vec<u8>,
-        key: [u8; KEY_SIZE],
-    ) -> Result<String, Box<dyn Error>> {
+    pub fn decrypt(&self, cipher_text: Vec<u8>) -> Result<String, CryptoError> {
         if cipher_text.is_empty() {
-            return Err("cipher_text cannot be empty".into());
+            return Err(CryptoError::EmptyInput);
         }
 
-        let res = Aes128EcbDec::new(&key.into())
+        let res = EcbDecryptor::new(&self.key.into())
             .decrypt_padded_vec_mut::<Pkcs7>(&cipher_text)
-            .unwrap();
+            .map_err(|e: UnpadError| CryptoError::DecryptionFailed(e.to_string()))?;
 
-        String::from_utf8(res).map_err(|e| e.into())
-    }
-
-    pub fn decrypt(&self, cipher_text: Vec<u8>) -> Result<String, Box<dyn Error>> {
-        Self::decrypt_string_from_bytes(cipher_text, self.key)
-    }
-
-    pub fn bytes_to_hex(buf: &[u8]) -> String {
-        let mut string = String::with_capacity(buf.len() * 2);
-        for &byte in buf {
-            string.push_str(&format!("{:02x}", byte));
-        }
-        string
-    }
-
-    pub fn hex_to_bytes(str: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        if str.len() % 2 != 0 {
-            return Err("Hex string must have even length".into());
-        }
-        let mut vec = Vec::with_capacity(str.len() / 2);
-        let bytes = str.as_bytes();
-        for i in (0..str.len()).step_by(2) {
-            let hex_str = std::str::from_utf8(&bytes[i..i + 2])?;
-            let byte = u8::from_str_radix(hex_str, 16)?;
-            vec.push(byte);
-        }
-        Ok(vec)
+        String::from_utf8(res).map_err(CryptoError::from)
     }
 }
 
