@@ -71,7 +71,7 @@ impl Crypto {
         self.key = key;
     }
 
-    pub fn encrypt(&self, plain_text: String) -> Result<Vec<u8>, CryptoError> {
+    pub fn encrypt(&self, plain_text: &str) -> Result<Vec<u8>, CryptoError> {
         if plain_text.is_empty() {
             return Err(CryptoError::EmptyInput);
         }
@@ -82,16 +82,27 @@ impl Crypto {
         Ok(res)
     }
 
-    pub fn decrypt(&self, cipher_text: Vec<u8>) -> Result<String, CryptoError> {
+    pub fn decrypt(&self, cipher_text: &[u8]) -> Result<String, CryptoError> {
         if cipher_text.is_empty() {
             return Err(CryptoError::EmptyInput);
         }
 
         let res = EcbDecryptor::new(&self.key.into())
-            .decrypt_padded_vec_mut::<Pkcs7>(&cipher_text)
+            .decrypt_padded_vec_mut::<Pkcs7>(cipher_text)
             .map_err(|e: UnpadError| CryptoError::DecryptionFailed(e.to_string()))?;
 
         String::from_utf8(res).map_err(CryptoError::from)
+    }
+
+    pub fn prepare_challenge_response(&mut self, key: &str) -> Result<String, CryptoError> {
+        let response_key = self.encrypt(key)?;
+        let response_str = hex::encode(&response_key);
+        let response_bytes = response_str.as_bytes();
+
+        let seed = ((response_bytes[0] as u32) << 8) | (response_bytes[1] as u32);
+        self.set_key(seed);
+
+        Ok(response_str)
     }
 }
 
@@ -125,11 +136,8 @@ mod tests {
         let crypto = Crypto::new(1337);
 
         let plain_text = "hello world".to_string();
-        let cipher_text = crypto
-            .encrypt(plain_text.clone())
-            .expect("Failed to encrypt");
-
-        let decrypted_text = crypto.decrypt(cipher_text).expect("Failed to decrypt");
+        let cipher_text = crypto.encrypt(&plain_text).expect("Failed to encrypt");
+        let decrypted_text = crypto.decrypt(&cipher_text).expect("Failed to decrypt");
 
         assert_eq!(plain_text, decrypted_text);
     }

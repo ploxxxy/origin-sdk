@@ -7,9 +7,8 @@ use std::{
     },
     time::Duration,
 };
-
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{
         TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -30,7 +29,10 @@ use crate::{
     },
 };
 
+// TODO: error handling
 type SdkError = Box<dyn Error + Send + Sync>;
+type SdkResult<T> = Result<T, SdkError>;
+
 type PendingRequests = Arc<Mutex<HashMap<u64, Sender<Response>>>>;
 
 pub struct OriginSdk {
@@ -41,8 +43,14 @@ pub struct OriginSdk {
     crypto: Crypto,
 }
 
+impl Drop for OriginSdk {
+    fn drop(&mut self) {
+        self.reader_handle.abort();
+    }
+}
+
 impl OriginSdk {
-    pub async fn connect(address: &str) -> Result<Self, SdkError> {
+    pub async fn connect(address: &str) -> SdkResult<Self> {
         let stream = TcpStream::connect(address).await?;
         let (read_half, write_half) = stream.into_split();
 
@@ -54,13 +62,11 @@ impl OriginSdk {
 
         let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
-        let reader_handle = {
-            tokio::spawn(Self::reader_task(
-                reader,
-                pending_requests.clone(),
-                crypto.clone(),
-            ))
-        };
+        let reader_handle = tokio::spawn(Self::reader_task(
+            reader,
+            pending_requests.clone(),
+            crypto.clone(),
+        ));
 
         Ok(OriginSdk {
             writer: Arc::new(Mutex::new(writer)),
@@ -75,11 +81,11 @@ impl OriginSdk {
         reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         crypto: &mut Crypto,
-    ) -> Result<(), SdkError> {
+    ) -> SdkResult<()> {
         loop {
             let data = Self::read_message(reader).await?;
 
-            if data.len() > 0 {
+            if !data.is_empty() {
                 let str = String::from_utf8_lossy(&data);
                 let lsx: Lsx = quick_xml::de::from_str(&str)?;
 
@@ -88,21 +94,7 @@ impl OriginSdk {
                         if let EventBody::Challenge(challenge) = event.body {
                             println!("Challenge key: {}", challenge.key);
 
-                            let response_key = crypto.encrypt(challenge.key.clone()).unwrap();
-                            let response_str = hex::encode(&response_key);
-
-                            let response_bytes = response_str.as_bytes();
-
-                            let part1 = (response_bytes[0] as u32) << 8;
-                            let part2 = response_bytes[1] as u32;
-
-                            let seed = part1 + part2;
-
-                            println!("seed1 {}, seed2 {}", part1, part2);
-                            println!("new seed {}", seed);
-
-                            crypto.set_key(seed);
-
+                            let response_str = crypto.prepare_challenge_response(&challenge.key)?;
                             let challenge_response = ChallengeResponse {
                                 content_id: "Origin.OFR.50.0005734".to_string(),
                                 key: challenge.key.clone(),
@@ -114,8 +106,8 @@ impl OriginSdk {
                                 title: "skate".to_string(),
                             };
 
-                            Self::send_challenge_response(reader, writer, challenge_response)
-                                .await?;
+                            Self::send_challenge_response(writer, challenge_response).await?;
+                            Self::wait_challenge_accepted(reader).await?;
 
                             return Ok(());
                         }
@@ -129,10 +121,9 @@ impl OriginSdk {
     }
 
     async fn send_challenge_response(
-        reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         challenge_response: ChallengeResponse,
-    ) -> Result<(), SdkError> {
+    ) -> SdkResult<()> {
         let request = Request {
             recipient: "EALS".to_string(),
             id: "0".to_string(),
@@ -144,14 +135,15 @@ impl OriginSdk {
         };
 
         let serialized = quick_xml::se::to_string(&lsx)?;
-        let mut data = serialized.into_bytes();
-        data.push(0x00);
-        writer.write_all(&data).await?;
-        writer.flush().await?;
+        Self::send_raw(writer, serialized.into_bytes()).await?;
 
+        Ok(())
+    }
+
+    async fn wait_challenge_accepted(reader: &mut BufReader<OwnedReadHalf>) -> SdkResult<()> {
         loop {
             let data = Self::read_message(reader).await?;
-            if data.len() > 0 {
+            if !data.is_empty() {
                 let str = String::from_utf8_lossy(&data);
                 let lsx: Lsx = quick_xml::de::from_str(&str)?;
 
@@ -186,78 +178,67 @@ impl OriginSdk {
         loop {
             match Self::read_message(&mut reader).await {
                 Ok(data) => {
-                    if data.len() > 0 {
-                        let str = String::from_utf8_lossy(&data);
+                    if data.is_empty() {
+                        continue;
+                    }
 
-                        let arr = match hex::decode(str.as_ref()) {
-                            Ok(arr) => arr,
-                            Err(e) => {
-                                println!("Failed to decode hex: {}", e);
-                                continue;
-                            }
-                        };
+                    let str = String::from_utf8_lossy(&data);
+                    let Ok(buf) = hex::decode(str.as_ref()) else {
+                        println!("Failed to decode hex: {}", str);
+                        continue;
+                    };
 
-                        let xml = match crypto.decrypt(arr) {
-                            Ok(xml) => xml,
-                            Err(e) => {
-                                println!("Failed to decrypt: {}", e);
-                                continue;
-                            }
-                        };
+                    let Ok(xml) = crypto.decrypt(&buf) else {
+                        println!("Failed to decrypt");
+                        continue;
+                    };
 
-                        let lsx: Lsx = match quick_xml::de::from_str(&xml) {
-                            Ok(lsx) => lsx,
-                            Err(e) => {
-                                println!("Failed to parse XML: {}", e);
-                                continue;
-                            }
-                        };
+                    let Ok(lsx): Result<Lsx, _> = quick_xml::de::from_str(&xml) else {
+                        println!("Failed to parse XML: {}", xml);
+                        continue;
+                    };
 
-                        match lsx.message {
-                            Message::Event(event) => {
-                                println!("Received event from {}", event.sender);
-                            }
-                            Message::Response(response) => {
-                                if let Ok(id) = response.id.parse::<u64>() {
-                                    let mut pending = pending_requests.lock().await;
-                                    if let Some(tx) = pending.remove(&id) {
-                                        let _ = tx.send(response);
-                                    }
+                    match lsx.message {
+                        Message::Event(event) => {
+                            println!("Received event from {}", event.sender);
+                        }
+                        Message::Response(response) => {
+                            if let Ok(id) = response.id.parse::<u64>() {
+                                let mut pending = pending_requests.lock().await;
+                                if let Some(tx) = pending.remove(&id) {
+                                    let _ = tx.send(response);
                                 }
                             }
-                            _ => {}
                         }
+                        _ => {}
                     }
                 }
                 Err(e) => {
-                    println!("Error: {}", e);
+                    println!("Error reading message: {}", e);
                     break;
                 }
             }
         }
     }
 
-    async fn read_message(reader: &mut BufReader<OwnedReadHalf>) -> Result<Vec<u8>, SdkError> {
-        let mut buffer = Vec::new();
+    async fn read_message(reader: &mut BufReader<OwnedReadHalf>) -> SdkResult<Vec<u8>> {
+        let mut buf = Vec::new();
 
-        loop {
-            let byte = reader.read_u8().await?;
+        reader.read_until(0x00, &mut buf).await?;
+        buf.pop();
 
-            if byte == 0 {
-                break;
-            }
-
-            buffer.push(byte);
-        }
-
-        Ok(buffer)
+        Ok(buf)
     }
 
-    async fn send_request(
-        &self,
-        body: RequestBody,
-        recipient: &str,
-    ) -> Result<ResponseBody, SdkError> {
+    async fn send_raw(writer: &mut OwnedWriteHalf, mut bytes: Vec<u8>) -> SdkResult<()> {
+        bytes.push(0x00);
+        writer.write_all(&bytes).await?;
+        writer.flush().await?;
+
+        Ok(())
+    }
+
+    async fn send_request(&self, body: RequestBody, recipient: &str) -> SdkResult<ResponseBody> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -277,16 +258,11 @@ impl OriginSdk {
         };
 
         let serialized = quick_xml::se::to_string(&lsx)?;
-        let encrypted = self.crypto.encrypt(serialized).unwrap();
+        let encrypted = self.crypto.encrypt(&serialized)?;
         let hex = hex::encode(&encrypted);
 
-        {
-            let mut writer = self.writer.lock().await;
-            let mut data = hex.into_bytes();
-            data.push(0);
-            writer.write_all(&data).await?;
-            writer.flush().await?;
-        }
+        let mut writer = self.writer.lock().await;
+        Self::send_raw(&mut writer, hex.into_bytes()).await?;
 
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
             Ok(Ok(response)) => Ok(response.body),
@@ -299,7 +275,7 @@ impl OriginSdk {
         }
     }
 
-    pub async fn get_internet_connected_state(&self) -> Result<InternetConnectedState, SdkError> {
+    pub async fn get_internet_connected_state(&self) -> SdkResult<InternetConnectedState> {
         let request = GetInternetConnectedState {};
         let response = self
             .send_request(RequestBody::GetInternetConnectedState(request), "EbisuSDK")
