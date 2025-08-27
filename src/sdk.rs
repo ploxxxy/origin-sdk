@@ -15,7 +15,8 @@ use tokio::{
     },
     sync::{
         Mutex,
-        oneshot::{self, Sender},
+        mpsc::{self},
+        oneshot::{self},
     },
     task::JoinHandle,
 };
@@ -23,7 +24,7 @@ use tokio::{
 use crate::{
     crypto::Crypto,
     protocol::{
-        lsx::{Lsx, Message, Request, Response},
+        lsx::{Event, Lsx, Message, Request, Response},
         message::{EventBody, RequestBody, ResponseBody},
         model::{ChallengeResponse, GetInternetConnectedState, InternetConnectedState},
     },
@@ -33,7 +34,7 @@ use crate::{
 type SdkError = Box<dyn Error + Send + Sync>;
 type SdkResult<T> = Result<T, SdkError>;
 
-type PendingRequests = Arc<Mutex<HashMap<u64, Sender<Response>>>>;
+type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
 
 pub struct OriginSdk {
     writer: Arc<Mutex<OwnedWriteHalf>>,
@@ -50,7 +51,7 @@ impl Drop for OriginSdk {
 }
 
 impl OriginSdk {
-    pub async fn connect(address: &str) -> SdkResult<Self> {
+    pub async fn connect(address: &str) -> SdkResult<(Self, mpsc::Receiver<Event>)> {
         let stream = TcpStream::connect(address).await?;
         let (read_half, write_half) = stream.into_split();
 
@@ -62,19 +63,24 @@ impl OriginSdk {
 
         let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
+        let (event_tx, event_rx) = mpsc::channel(100);
+
         let reader_handle = tokio::spawn(Self::reader_task(
             reader,
             pending_requests.clone(),
             crypto.clone(),
+            event_tx,
         ));
 
-        Ok(OriginSdk {
+        let sdk = OriginSdk {
             writer: Arc::new(Mutex::new(writer)),
             reader_handle,
             pending_requests,
             next_id: AtomicU64::new(1),
             crypto,
-        })
+        };
+
+        Ok((sdk, event_rx))
     }
 
     async fn perform_handshake(
@@ -174,6 +180,7 @@ impl OriginSdk {
         mut reader: BufReader<OwnedReadHalf>,
         pending_requests: PendingRequests,
         crypto: Crypto,
+        event_tx: mpsc::Sender<Event>,
     ) {
         loop {
             match Self::read_message(&mut reader).await {
@@ -200,7 +207,9 @@ impl OriginSdk {
 
                     match lsx.message {
                         Message::Event(event) => {
-                            println!("Received event from {}", event.sender);
+                            if let Err(e) = event_tx.send(event).await {
+                                println!("Failed to send event: {}", e);
+                            }
                         }
                         Message::Response(response) => {
                             if let Ok(id) = response.id.parse::<u64>() {

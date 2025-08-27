@@ -18,4 +18,5 @@ pub enum ResponseBody {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EventBody {
     Challenge(Challenge),
+    PresenceVisibilityEvent(PresenceVisibilityEvent),
 }

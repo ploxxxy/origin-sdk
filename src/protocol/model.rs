@@ -53,3 +53,9 @@ pub struct QueryFriends {
     #[serde(rename = "@UserId")]
     pub user_id: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PresenceVisibilityEvent {
+    #[serde(rename = "@Visible")]
+    pub visible: bool,
+}
