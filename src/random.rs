@@ -1,3 +1,5 @@
+use tracing::debug;
+
 const RAND_MAX: u32 = 32767;
 const MULTIPLIER: u32 = 214013;
 const INCREMENT: u32 = 2531011;
@@ -17,6 +19,7 @@ impl Random {
     }
 
     pub fn set_seed(&mut self, seed: u32) {
+        debug!("Setting new random seed: {}", seed);
         self.seed = seed;
     }
 }

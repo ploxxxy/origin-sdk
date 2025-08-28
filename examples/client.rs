@@ -5,7 +5,10 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    fmt().with_env_filter(EnvFilter::new("trace")).try_init().unwrap();
+    fmt()
+        .with_env_filter(EnvFilter::new("trace"))
+        .try_init()
+        .unwrap();
 
     let (client, mut event_rx) = OriginSdk::connect("127.0.0.1:3216").await.unwrap();
 
@@ -17,8 +20,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let state = client.get_internet_connected_state().await.unwrap();
+    info!("Connected to the internet?: {}", state.connected);
 
-    info!("Connected?: {}", state.connected);
+    let profile = client.get_profile(0).await.unwrap();
+    info!("Profile: {:#?}", profile);
+
+    let config = client.get_config().await.unwrap();
+    info!("Config: {:#?}", config);
 
     tokio::signal::ctrl_c().await?;
 

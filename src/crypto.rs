@@ -102,7 +102,6 @@ impl Crypto {
         let response_bytes = response_str.as_bytes();
 
         let seed = ((response_bytes[0] as u32) << 8) | (response_bytes[1] as u32);
-        debug!("Setting new random seed: {}", seed);
         self.set_key(seed);
 
         Ok(response_str)

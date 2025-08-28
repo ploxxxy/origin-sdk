@@ -24,10 +24,14 @@ use tracing::{debug, error, info};
 
 use crate::{
     crypto::Crypto,
+    match_response,
     protocol::{
         lsx::{Event, Lsx, Message, Request, Response},
         message::{EventBody, RequestBody, ResponseBody},
-        model::{ChallengeResponse, GetInternetConnectedState, InternetConnectedState},
+        model::{
+            ChallengeResponse, GetConfig, GetConfigResponse, GetInternetConnectedState, GetProfile,
+            GetProfileResponse, InternetConnectedState,
+        },
     },
 };
 
@@ -103,14 +107,14 @@ impl OriginSdk {
 
                             let response_str = crypto.prepare_challenge_response(&challenge.key)?;
                             let challenge_response = ChallengeResponse {
-                                content_id: "Origin.OFR.50.0005734".to_string(),
+                                content_id: "Origin.OFR.50.0001000".to_string(),
                                 key: challenge.key.clone(),
                                 response: response_str,
                                 language: "en_US".to_string(),
                                 multiplayer_id: "".to_string(),
                                 protocol_version: "3".to_string(),
                                 sdk_version: "9.10.1.7".to_string(),
-                                title: "skate".to_string(),
+                                title: "".to_string(),
                             };
 
                             Self::send_challenge_response(writer, challenge_response).await?;
@@ -200,9 +204,12 @@ impl OriginSdk {
                         continue;
                     };
 
-                    let Ok(lsx): Result<Lsx, _> = quick_xml::de::from_str(&xml) else {
-                        error!("Failed to parse XML: {}", xml);
-                        continue;
+                    let lsx: Lsx = match quick_xml::de::from_str(&xml) {
+                        Ok(lsx) => lsx,
+                        Err(err) => {
+                            error!("Failed to parse XML: {}\nError: {}", xml, err);
+                            continue;
+                        }
                     };
 
                     match lsx.message {
@@ -290,9 +297,24 @@ impl OriginSdk {
             .send_request(RequestBody::GetInternetConnectedState(request), "EbisuSDK")
             .await?;
 
-        match response {
-            ResponseBody::InternetConnectedState(state) => Ok(state),
-            _ => Err("Unexpected response".into()),
-        }
+        match_response!(response, InternetConnectedState)
+    }
+
+    pub async fn get_config(&self) -> SdkResult<GetConfigResponse> {
+        let request = GetConfig {};
+        let response = self
+            .send_request(RequestBody::GetConfig(request), "EbisuSDK")
+            .await?;
+
+        match_response!(response, GetConfigResponse)
+    }
+
+    pub async fn get_profile(&self, index: u32) -> SdkResult<GetProfileResponse> {
+        let request = GetProfile { index };
+        let response = self
+            .send_request(RequestBody::GetProfile(request), "EbisuSDK")
+            .await?;
+
+        match_response!(response, GetProfileResponse)
     }
 }
