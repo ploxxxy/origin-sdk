@@ -24,19 +24,15 @@ use tracing::{debug, error, info};
 
 use crate::{
     crypto::Crypto,
-    match_response,
     protocol::{
         lsx::{Event, Lsx, Message, Request, Response},
         message::{EventBody, RequestBody, ResponseBody},
-        model::{
-            ChallengeResponse, GetConfig, GetConfigResponse, GetInternetConnectedState, GetProfile,
-            GetProfileResponse, InternetConnectedState,
-        },
+        model::{ChallengeResponse, RequestResponse},
     },
 };
 
 // TODO: error handling
-type SdkError = Box<dyn Error + Send + Sync>;
+pub type SdkError = Box<dyn Error + Send + Sync>;
 type SdkResult<T> = Result<T, SdkError>;
 
 type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
@@ -254,7 +250,11 @@ impl OriginSdk {
         Ok(())
     }
 
-    async fn send_request(&self, body: RequestBody, recipient: &str) -> SdkResult<ResponseBody> {
+    pub async fn send_request<T>(&self, body: T) -> SdkResult<T::Response>
+    where
+        T: RequestResponse + Into<RequestBody>,
+        T::Response: TryFrom<ResponseBody, Error = SdkError>,
+    {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -264,9 +264,14 @@ impl OriginSdk {
         }
 
         let request = Request {
-            recipient: recipient.to_string(),
+            // In the actual implementation, OriginSDK
+            // keeps a map of facilities to recipients
+            // that comes from GetConfig request
+            // This isn't implemented here as EA Desktop
+            // uses "EbisuSDK" for all its services
+            recipient: "EbisuSDK".to_string(),
             id: id.to_string(),
-            body,
+            body: body.into(),
         };
 
         let lsx = Lsx {
@@ -280,41 +285,13 @@ impl OriginSdk {
         let mut writer = self.writer.lock().await;
         Self::send_raw(&mut writer, hex.into_bytes()).await?;
 
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(Ok(response)) => Ok(response.body),
+        match tokio::time::timeout(Duration::from_secs(5), rx).await {
+            Ok(Ok(response)) => Ok(T::Response::try_from(response.body)?),
             Ok(Err(_)) => Err("Channel closed".into()),
             Err(_) => {
-                let mut pending = self.pending_requests.lock().await;
-                pending.remove(&id);
+                self.pending_requests.lock().await.remove(&id);
                 Err("Timeout".into())
             }
         }
-    }
-
-    pub async fn get_internet_connected_state(&self) -> SdkResult<InternetConnectedState> {
-        let request = GetInternetConnectedState {};
-        let response = self
-            .send_request(RequestBody::GetInternetConnectedState(request), "EbisuSDK")
-            .await?;
-
-        match_response!(response, InternetConnectedState)
-    }
-
-    pub async fn get_config(&self) -> SdkResult<GetConfigResponse> {
-        let request = GetConfig {};
-        let response = self
-            .send_request(RequestBody::GetConfig(request), "EbisuSDK")
-            .await?;
-
-        match_response!(response, GetConfigResponse)
-    }
-
-    pub async fn get_profile(&self, index: u32) -> SdkResult<GetProfileResponse> {
-        let request = GetProfile { index };
-        let response = self
-            .send_request(RequestBody::GetProfile(request), "EbisuSDK")
-            .await?;
-
-        match_response!(response, GetProfileResponse)
     }
 }

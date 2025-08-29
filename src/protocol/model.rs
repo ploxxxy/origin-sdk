@@ -1,6 +1,18 @@
+use crate::{
+    protocol::message::{RequestBody, ResponseBody},
+    request_response, xml,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::xml;
+pub trait RequestResponse {
+    type Response;
+}
+
+request_response! {
+    GetConfig => GetConfigResponse,
+    GetInternetConnectedState => InternetConnectedState,
+    GetProfile => GetProfileResponse,
+}
 
 xml!(Challenge {
     #[serde(rename = "@build")]

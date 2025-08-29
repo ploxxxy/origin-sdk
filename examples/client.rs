@@ -1,4 +1,7 @@
-use origin_sdk::sdk::OriginSdk;
+use origin_sdk::{
+    protocol::model::{GetConfig, GetInternetConnectedState, GetProfile},
+    sdk::OriginSdk,
+};
 use std::error::Error;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -19,13 +22,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let state = client.get_internet_connected_state().await.unwrap();
+    let state = client
+        .send_request(GetInternetConnectedState {})
+        .await
+        .unwrap();
     info!("Connected to the internet?: {}", state.connected);
 
-    let profile = client.get_profile(0).await.unwrap();
+    let profile = client.send_request(GetProfile { index: 0 }).await.unwrap();
     info!("Profile: {:#?}", profile);
 
-    let config = client.get_config().await.unwrap();
+    let config = client.send_request(GetConfig {}).await.unwrap();
     info!("Config: {:#?}", config);
 
     tokio::signal::ctrl_c().await?;

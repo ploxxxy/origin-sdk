@@ -7,15 +7,30 @@ macro_rules! xml {
 }
 
 #[macro_export]
-macro_rules! match_response {
-    ($response:expr, $expected_variant:ident) => {
-        match $response {
-            ResponseBody::$expected_variant(inner) => Ok(inner),
-            _ => Err(format!(
-                "Unexpected response. Was expecting {}",
-                stringify!($expected_variant)
-            )
-            .into()),
-        }
+macro_rules! request_response {
+    ($($request:ident => $response:ident),* $(,)?) => {
+        $(
+            impl RequestResponse for $request {
+                type Response = $response;
+            }
+
+            impl From<$request> for RequestBody {
+                fn from(val: $request) -> Self {
+                    RequestBody::$request(val)
+                }
+            }
+
+            impl TryFrom<ResponseBody> for $response {
+                type Error = $crate::sdk::SdkError;
+
+                fn try_from(body: ResponseBody) -> Result<Self, Self::Error> {
+                    match body {
+                        ResponseBody::$response(response) => Ok(response),
+                        // TODO: construct MismatchedResponseBody or similar
+                        _ => Err("Wrong response type".into()),
+                    }
+                }
+            }
+        )*
     };
 }

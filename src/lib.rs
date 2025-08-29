@@ -1,5 +1,5 @@
 mod crypto;
 mod macros;
-mod protocol;
+pub mod protocol;
 mod random;
 pub mod sdk;
