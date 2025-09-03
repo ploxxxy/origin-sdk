@@ -20,7 +20,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     crypto::Crypto,
@@ -30,9 +30,22 @@ use crate::{
     },
 };
 
+/// Default port for the Origin SDK
+pub const ORIGIN_SDK_PORT: u16 = 3216;
+
 // TODO: error handling
 pub type SdkError = Box<dyn Error + Send + Sync>;
 type SdkResult<T> = Result<T, SdkError>;
+
+/// Configuration for the Origin SDK client
+pub struct ClientConfig {
+    /// Can be contentId, masterTitleId, or offerId
+    pub content_id: String,
+    pub language: String,
+    pub multiplayer_id: String,
+    pub title: String,
+    pub version_override: Option<String>,
+}
 
 /// Shared state for tracking requests that are awaiting responses
 ///
@@ -65,8 +78,11 @@ impl OriginSdk {
     /// Returns a tuple of:
     /// - The [`OriginSdk`] client instance
     /// - An [`mpsc::Receiver`] for incoming [`Event`]s
-    pub async fn connect(address: &str) -> SdkResult<(Self, mpsc::Receiver<Event>)> {
-        let stream = TcpStream::connect(address).await?;
+    pub async fn connect(
+        config: ClientConfig,
+        port: u16,
+    ) -> SdkResult<(Self, mpsc::Receiver<Event>)> {
+        let stream = TcpStream::connect(("127.0.0.1", port)).await?;
         let (read_half, write_half) = stream.into_split();
 
         let mut reader = BufReader::new(read_half);
@@ -75,7 +91,7 @@ impl OriginSdk {
 
         // Server requires a challenge/response authentication sequence
         // before normal requests can be sent.
-        Self::perform_challenge(&mut reader, &mut writer, &mut crypto).await?;
+        Self::perform_challenge(config, &mut reader, &mut writer, &mut crypto).await?;
 
         let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
@@ -101,6 +117,7 @@ impl OriginSdk {
     }
 
     async fn perform_challenge(
+        config: ClientConfig,
         reader: &mut BufReader<OwnedReadHalf>,
         writer: &mut OwnedWriteHalf,
         crypto: &mut Crypto,
@@ -120,18 +137,24 @@ impl OriginSdk {
                         if let EventBody::Challenge(challenge) = event.body {
                             debug!("Challenge key: {}", challenge.key);
 
+                            let sdk_version = match config.version_override {
+                                Some(version) => version,
+                                None => "10.6.1.8".to_string(),
+                            };
+
                             // Construct a challenge response payload with session metadata
-                            // TODO: replace the hardcoded values with user input
                             let response_str = crypto.prepare_challenge_response(&challenge.key)?;
                             let challenge_response = ChallengeResponse {
-                                content_id: "Origin.OFR.50.0001000".to_string(),
+                                content_id: config.content_id,
                                 key: challenge.key.clone(),
                                 response: response_str,
-                                language: "en_US".to_string(),
-                                multiplayer_id: "".to_string(),
-                                protocol_version: "2".to_string(),
-                                sdk_version: "9.10.1.7".to_string(),
-                                title: "".to_string(),
+                                language: config.language,
+                                multiplayer_id: config.multiplayer_id,
+                                // Protocol versions other than 3 always use the default encryption
+                                // key ([0, 1, 2 ... 15]) for the requests. Should be implemented?
+                                protocol_version: "3".to_string(),
+                                sdk_version,
+                                title: config.title,
                             };
 
                             // Send the challenge response and wait for it to be accepted
@@ -237,8 +260,12 @@ impl OriginSdk {
                     // Responses are matched against their pending IDs
                     match lsx.message {
                         Message::Event(event) => {
+                            if event_tx.is_closed() {
+                                continue;
+                            }
+
                             if let Err(e) = event_tx.send(event).await {
-                                error!("Failed to send event: {}", e);
+                                warn!("Failed to send event: {}", e);
                             }
                         }
                         Message::Response(response) => {

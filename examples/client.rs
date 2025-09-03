@@ -1,9 +1,10 @@
 use origin_sdk::{
     protocol::{
+        game::GetAllGameInfo,
         profile::GetProfile,
         system::{GetConfig, GetInternetConnectedState},
     },
-    sdk::OriginSdk,
+    sdk::{ClientConfig, ORIGIN_SDK_PORT, OriginSdk},
 };
 use std::error::Error;
 use tracing::info;
@@ -16,9 +17,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .try_init()
         .unwrap();
 
+    // This configuration defines the game to the Origin SDK server
+    let game = ClientConfig {
+        content_id: "1026480".to_string(),
+        language: "en_US".to_string(),
+        multiplayer_id: "1026480".to_string(),
+        title: "Mirror's Edge™ Catalyst".to_string(),
+        version_override: None,
+    };
+
     // Connect to the Origin SDK server at the given address
     // Returns a client handle for sending requests and a channel for receiving events
-    let (client, mut event_rx) = OriginSdk::connect("127.0.0.1:3216").await.unwrap();
+    let (client, mut event_rx) = OriginSdk::connect(game, ORIGIN_SDK_PORT).await.unwrap();
 
     // Spawn a background task that continuously listens for server events
     // and logs them. Keeps the main thread free to send requests
@@ -45,6 +55,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // but EA Desktop uses "EbisuSDK" for all its services
     let config = client.send_request(GetConfig {}).await.unwrap();
     info!("Config: {:#?}", config);
+
+    let res = client.send_request(GetAllGameInfo {}).await.unwrap();
+    info!("Games: {:#?}", res);
 
     // Block until Ctrl+C is pressed. This keeps the process alive
     // so background event handling continues until user termination

@@ -17,7 +17,15 @@ ecb = { version = "0.1.2", features = ["alloc"] }
 hex = "0.4.3"
 quick-xml = { version = "0.38.3", features = ["serialize"] }
 serde = { version = "1.0.219", features = ["derive"] }
-tokio = { version = "1.47.1", features = ["full"] }
+tokio = { version = "1.47.1", features = [
+  "net",
+  "rt-multi-thread",
+  "io-util",
+  "sync",
+  "time",
+  "macros",
+  "signal",
+] }
 tracing = "0.1.41"
 
 [dev-dependencies]
