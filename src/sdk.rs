@@ -34,11 +34,19 @@ use crate::{
 pub type SdkError = Box<dyn Error + Send + Sync>;
 type SdkResult<T> = Result<T, SdkError>;
 
+/// Shared state for tracking requests that are awaiting responses
+///
+/// Each request is associated with a unique numeric ID and a oneshot sender
+/// through which the response will be delivered
 type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
 
+/// The client for interacting with the Origin SDK protocol.
 pub struct OriginSdk {
+    /// Shared handle for writing messages to the server
     writer: Arc<Mutex<OwnedWriteHalf>>,
+    /// Background task that continiously reads messages from the server
     reader_handle: JoinHandle<()>,
+    /// Pending requests waiting for server responses
     pending_requests: PendingRequests,
     next_id: AtomicU64,
     crypto: Crypto,
@@ -46,11 +54,17 @@ pub struct OriginSdk {
 
 impl Drop for OriginSdk {
     fn drop(&mut self) {
+        // Abort the background reader task when the client is dropped
         self.reader_handle.abort();
     }
 }
 
 impl OriginSdk {
+    /// Establish a connection to the Origin SDK server
+    ///
+    /// Returns a tuple of:
+    /// - The [`OriginSdk`] client instance
+    /// - An [`mpsc::Receiver`] for incoming [`Event`]s
     pub async fn connect(address: &str) -> SdkResult<(Self, mpsc::Receiver<Event>)> {
         let stream = TcpStream::connect(address).await?;
         let (read_half, write_half) = stream.into_split();
@@ -59,12 +73,15 @@ impl OriginSdk {
         let mut writer = write_half;
         let mut crypto = Crypto::new(0);
 
+        // Server requires a challenge/response authentication sequence
+        // before normal requests can be sent.
         Self::perform_challenge(&mut reader, &mut writer, &mut crypto).await?;
 
         let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
         let (event_tx, event_rx) = mpsc::channel(100);
 
+        // Spawn the background reader lopp
         let reader_handle = tokio::spawn(Self::reader_task(
             reader,
             pending_requests.clone(),
@@ -97,9 +114,14 @@ impl OriginSdk {
 
                 match lsx.message {
                     Message::Event(event) => {
+                        // The server issues a cryptographic challenge, which we must answer using
+                        // prepare_challenge_response Once the challenge is accepted,
+                        // the session is considered authenticated
                         if let EventBody::Challenge(challenge) = event.body {
                             debug!("Challenge key: {}", challenge.key);
 
+                            // Construct a challenge response payload with session metadata
+                            // TODO: replace the hardcoded values with user input
                             let response_str = crypto.prepare_challenge_response(&challenge.key)?;
                             let challenge_response = ChallengeResponse {
                                 content_id: "Origin.OFR.50.0001000".to_string(),
@@ -107,11 +129,12 @@ impl OriginSdk {
                                 response: response_str,
                                 language: "en_US".to_string(),
                                 multiplayer_id: "".to_string(),
-                                protocol_version: "3".to_string(),
+                                protocol_version: "2".to_string(),
                                 sdk_version: "9.10.1.7".to_string(),
                                 title: "".to_string(),
                             };
 
+                            // Send the challenge response and wait for it to be accepted
                             Self::send_challenge_response(writer, challenge_response).await?;
                             Self::wait_challenge_accepted(reader).await?;
 
@@ -146,6 +169,7 @@ impl OriginSdk {
         Ok(())
     }
 
+    /// Wait for the server to confirm the challenge was accepted
     async fn wait_challenge_accepted(reader: &mut BufReader<OwnedReadHalf>) -> SdkResult<()> {
         loop {
             let data = Self::read_message(reader).await?;
@@ -153,6 +177,8 @@ impl OriginSdk {
                 let str = String::from_utf8_lossy(&data);
                 let lsx: Lsx = quick_xml::de::from_str(&str)?;
 
+                // If the server responds with a mismatched or an unexpected message,
+                // the connection attempt fails
                 match lsx.message {
                     Message::Response(response) => match response.body {
                         ResponseBody::ChallengeAccepted(body) => {
@@ -207,6 +233,8 @@ impl OriginSdk {
                         }
                     };
 
+                    // Events are forwarded through the event channel
+                    // Responses are matched against their pending IDs
                     match lsx.message {
                         Message::Event(event) => {
                             if let Err(e) = event_tx.send(event).await {
@@ -249,6 +277,43 @@ impl OriginSdk {
         Ok(())
     }
 
+    /// Send a typed request to the server and await its response.
+    ///
+    /// ## How requests & responses are defined
+    /// All request types are declared under [`crate::protocol`] and grouped by domain
+    /// (`achievements.rs`, `auth.rs`, `chat.rs`, etc). Each request type implements
+    /// [`RequestResponse`], which is generated by the [`crate::request_response!`] macro.
+    ///
+    /// This macro wires requests to their corresponding response body variants
+    /// in [`ResponseBody`]. For example:
+    ///
+    /// ```rust,ignore
+    /// pub enum RequestBody {
+    ///     // ...
+    ///     GetProfile(GetProfile)
+    ///     // ...
+    /// }
+    ///
+    /// pub enum ResponseBody {
+    ///     // ...
+    ///     GetProfileResponse(GetProfileResponse),
+    ///     // ...
+    /// }
+    ///
+    /// request_response! {
+    ///     // ...
+    ///     GetProfile => GetProfileResponse,
+    ///     // ...
+    /// }
+    /// ```
+    ///
+    /// This means calling:
+    ///
+    /// ```rust,ignore
+    /// let profile: GetProfileResponse = client.send_request(GetProfile { /* ... */ }).await?;
+    /// ```
+    ///
+    /// automatically deserializes the server response into the correct type.
     pub async fn send_request<T>(&self, body: T) -> SdkResult<T::Response>
     where
         T: RequestResponse + Into<RequestBody>,
@@ -261,12 +326,12 @@ impl OriginSdk {
             pending.insert(id, tx);
         }
 
+        // In the actual implementation, OriginSDK keeps a map of
+        // Facility -> Recipient that comes from GetConfig request
+        //
+        // This isn't implemented here as EA Desktop
+        // uses "EbisuSDK" for all its services
         let request = Request {
-            // In the actual implementation, OriginSDK
-            // keeps a map of facilities to recipients
-            // that comes from GetConfig request
-            // This isn't implemented here as EA Desktop
-            // uses "EbisuSDK" for all its services
             recipient: "EbisuSDK".to_string(),
             id: id.to_string(),
             body: body.into(),
