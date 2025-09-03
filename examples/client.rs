@@ -1,5 +1,8 @@
 use origin_sdk::{
-    protocol::model::{GetConfig, GetInternetConnectedState, GetProfile},
+    protocol::{
+        profile::GetProfile,
+        system::{GetConfig, GetInternetConnectedState},
+    },
     sdk::OriginSdk,
 };
 use std::error::Error;

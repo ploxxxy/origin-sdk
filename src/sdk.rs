@@ -25,9 +25,8 @@ use tracing::{debug, error, info};
 use crate::{
     crypto::Crypto,
     protocol::{
-        lsx::{Event, Lsx, Message, Request, Response},
-        message::{EventBody, RequestBody, ResponseBody},
-        model::{ChallengeResponse, RequestResponse},
+        Event, EventBody, Lsx, Message, Request, RequestBody, RequestResponse, Response,
+        ResponseBody, auth::ChallengeResponse,
     },
 };
 
@@ -253,7 +252,6 @@ impl OriginSdk {
     pub async fn send_request<T>(&self, body: T) -> SdkResult<T::Response>
     where
         T: RequestResponse + Into<RequestBody>,
-        T::Response: TryFrom<ResponseBody, Error = SdkError>,
     {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
@@ -286,7 +284,7 @@ impl OriginSdk {
         Self::send_raw(&mut writer, hex.into_bytes()).await?;
 
         match tokio::time::timeout(Duration::from_secs(5), rx).await {
-            Ok(Ok(response)) => Ok(T::Response::try_from(response.body)?),
+            Ok(Ok(response)) => Ok(T::extract_response(response.body)?),
             Ok(Err(_)) => Err("Channel closed".into()),
             Err(_) => {
                 self.pending_requests.lock().await.remove(&id);
