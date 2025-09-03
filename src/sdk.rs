@@ -126,7 +126,14 @@ impl OriginSdk {
             let data = Self::read_message(reader).await?;
 
             if !data.is_empty() {
-                let str = String::from_utf8_lossy(&data);
+                let str = match String::from_utf8(data) {
+                    Ok(str) => str,
+                    Err(err) => {
+                        error!("Failed to decode UTF-8: {}", err);
+                        continue;
+                    }
+                };
+
                 let lsx: Lsx = quick_xml::de::from_str(&str)?;
 
                 match lsx.message {
@@ -197,7 +204,14 @@ impl OriginSdk {
         loop {
             let data = Self::read_message(reader).await?;
             if !data.is_empty() {
-                let str = String::from_utf8_lossy(&data);
+                let str = match String::from_utf8(data) {
+                    Ok(str) => str,
+                    Err(err) => {
+                        error!("Failed to decode UTF-8: {}", err);
+                        continue;
+                    }
+                };
+
                 let lsx: Lsx = quick_xml::de::from_str(&str)?;
 
                 // If the server responds with a mismatched or an unexpected message,
@@ -237,8 +251,15 @@ impl OriginSdk {
                         continue;
                     }
 
-                    let str = String::from_utf8_lossy(&data);
-                    let Ok(buf) = hex::decode(str.as_ref()) else {
+                    let str = match String::from_utf8(data) {
+                        Ok(str) => str,
+                        Err(err) => {
+                            error!("Failed to decode UTF-8: {}", err);
+                            continue;
+                        }
+                    };
+
+                    let Ok(buf) = hex::decode(&str) else {
                         error!("Failed to decode hex: {}", str);
                         continue;
                     };
@@ -273,6 +294,8 @@ impl OriginSdk {
                                 let mut pending = pending_requests.lock().await;
                                 if let Some(tx) = pending.remove(&id) {
                                     let _ = tx.send(response);
+                                } else {
+                                    warn!("Received response for unknown request ID: {}", id);
                                 }
                             }
                         }
@@ -372,8 +395,10 @@ impl OriginSdk {
         let encrypted = self.crypto.encrypt(&serialized)?;
         let hex = hex::encode(&encrypted);
 
-        let mut writer = self.writer.lock().await;
-        Self::send_raw(&mut writer, hex.into_bytes()).await?;
+        {
+            let mut writer = self.writer.lock().await;
+            Self::send_raw(&mut writer, hex.into_bytes()).await?;
+        }
 
         match tokio::time::timeout(Duration::from_secs(5), rx).await {
             Ok(Ok(response)) => Ok(T::extract_response(response.body)?),

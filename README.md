@@ -97,6 +97,7 @@ The session key is derived through a challenge handshake with the server.
 
 ## Acknowledgements
 - `Warranty Voider` for releasing [LSX-Dumper](https://github.com/zeroKilo/LSX-Dumper) and publishing information about the protocol on various forums
+- `Bergmann89` for releasing [xsd-parser](https://github.com/Bergmann89/xsd-parser), which helped with LSX model generation
 
 ## Disclaimer
 This project is a **third-party reimplementation** of the Origin SDK, based on reverse-engineering and observations of Origin SDK versions 9.12.1.7 and 10.6.1.8, intended for educational and research purposes only.
