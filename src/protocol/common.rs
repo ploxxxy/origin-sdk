@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+use crate::protocol::errors::OriginError;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorSuccess {
     #[serde(rename = "@Code")]
-    pub code: i32,
+    pub code: OriginError,
     #[serde(rename = "@Description")]
     pub description: String,
 }

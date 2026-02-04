@@ -8,6 +8,7 @@ pub mod chunk;
 pub mod commerce;
 pub mod common;
 pub mod entitlements;
+pub mod errors;
 pub mod friends;
 pub mod game;
 pub mod groups;

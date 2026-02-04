@@ -1,9 +1,9 @@
 use crate::random::Random;
 use aes::cipher::{
-    BlockDecryptMut, BlockEncryptMut, KeyInit,
     block_padding::{Pkcs7, UnpadError},
+    BlockDecryptMut, BlockEncryptMut, KeyInit,
 };
-use std::{error::Error, fmt};
+use thiserror::Error;
 use tracing::debug;
 
 type EcbEncryptor = ecb::Encryptor<aes::Aes128>;
@@ -12,31 +12,17 @@ type EcbDecryptor = ecb::Decryptor<aes::Aes128>;
 const KEY_SIZE: usize = 16;
 const DEFAULT_SEED: u32 = 7;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CryptoError {
+    #[error("Input cannot be empty")]
     EmptyInput,
+
+    #[error("Decryption failed: {0}")]
     DecryptionFailed(String),
-    Utf8Error(std::string::FromUtf8Error),
+
+    #[error("UTF-8 conversion error")]
+    Utf8Error(#[from] std::string::FromUtf8Error),
 }
-
-impl fmt::Display for CryptoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CryptoError::EmptyInput => write!(f, "Input cannot be empty"),
-            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {}", msg),
-            CryptoError::Utf8Error(err) => write!(f, "UTF-8 conversion error: {}", err),
-        }
-    }
-}
-
-impl Error for CryptoError {}
-
-impl From<std::string::FromUtf8Error> for CryptoError {
-    fn from(err: std::string::FromUtf8Error) -> Self {
-        CryptoError::Utf8Error(err)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Crypto {
     key: [u8; KEY_SIZE],
@@ -127,9 +113,7 @@ mod tests {
         assert_eq!(crypto.key.len(), KEY_SIZE);
         assert_eq!(
             &crypto.key as &[u8],
-            [
-                251, 135, 22, 197, 214, 181, 148, 115, 149, 93, 40, 78, 123, 141, 60, 108
-            ]
+            [251, 135, 22, 197, 214, 181, 148, 115, 149, 93, 40, 78, 123, 141, 60, 108]
         );
     }
 

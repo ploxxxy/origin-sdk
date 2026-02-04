@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
-    error::Error,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
 };
+use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{
@@ -25,16 +25,35 @@ use tracing::{debug, error, info, warn};
 use crate::{
     crypto::Crypto,
     protocol::{
-        auth::ChallengeResponse, Event, EventBody, Lsx, Message, Request, RequestBody,
-        RequestResponse, Response, ResponseBody,
+        auth::ChallengeResponse, errors::OriginError, Event, EventBody, Lsx, Message, Request,
+        RequestBody, RequestResponse, Response, ResponseBody,
     },
 };
 
 /// Default port for the Origin SDK
 pub const ORIGIN_SDK_PORT: u16 = 3216;
 
-// TODO: error handling
-pub type SdkError = Box<dyn Error + Send + Sync>;
+#[derive(Error, Debug)]
+pub enum SdkError {
+    #[error("{0:?}: {1}")]
+    OriginError(OriginError, String),
+
+    #[error("Network error: {0}")]
+    Network(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] quick_xml::SeError),
+
+    #[error("Deserialization error: {0}")]
+    Deserialization(#[from] quick_xml::DeError),
+
+    #[error("Crypto error: {0}")]
+    Crypto(#[from] crate::crypto::CryptoError),
+
+    #[error("{0}")]
+    Other(String),
+}
+
 type SdkResult<T> = Result<T, SdkError>;
 
 /// Configuration for the Origin SDK client
@@ -227,7 +246,9 @@ impl OriginSdk {
                             return Ok(());
                         }
                         _ => {
-                            return Err("Unexpected response to challenge".into());
+                            return Err(SdkError::Other(
+                                "Unexpected response to challenge".to_string(),
+                            ));
                         }
                     },
                     _ => {
@@ -410,10 +431,10 @@ impl OriginSdk {
 
         match tokio::time::timeout(Duration::from_secs(5), rx).await {
             Ok(Ok(response)) => Ok(T::extract_response(response.body)?),
-            Ok(Err(_)) => Err("Channel closed".into()),
+            Ok(Err(_)) => Err(SdkError::Other("Channel closed".to_string())),
             Err(_) => {
                 self.pending_requests.lock().await.remove(&id);
-                Err("Timeout".into())
+                Err(SdkError::Other("Timeout".to_string()))
             }
         }
     }
