@@ -37,6 +37,7 @@ use crate::protocol::profile::*;
 use crate::protocol::system::*;
 use crate::protocol::user::*;
 use crate::protocol::voip::*;
+#[cfg(feature = "client")]
 use crate::request_response;
 
 // Model definitions
@@ -233,11 +234,13 @@ pub enum EventBody {
 
 // Request -> Response mapping
 
+#[cfg(feature = "client")]
 pub trait RequestResponse {
     type Response;
     fn extract_response(body: ResponseBody) -> Result<Self::Response, crate::sdk::SdkError>;
 }
 
+#[cfg(feature = "client")]
 request_response! {
     AcceptFriendInvite => ErrorSuccess,
     AcceptInvite => ErrorSuccess,

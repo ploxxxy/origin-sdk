@@ -1,7 +1,7 @@
 [package]
 name = "origin-sdk"
-version = "0.1.1"
-edition = "2024"
+version = "0.1.2"
+edition = "2021"
 description = "A Rust implementation of the Origin SDK, which is used in games to communicate with the EA Desktop client."
 repository = "https://github.com/ploxxxy/origin-sdk"
 authors = ["ploxxxy"]
@@ -10,6 +10,13 @@ readme = "README.md"
 keywords = ["lsx", "electronic-arts", "ea", "origin"]
 categories = ["games"]
 
+[[example]]
+name = "client"
+required-features = ["client"]
+
+[features]
+default = []
+client = []
 
 [dependencies]
 aes = "0.8.4"

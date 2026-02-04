@@ -1,5 +1,8 @@
-mod crypto;
-mod macros;
+pub mod crypto;
 pub mod protocol;
-mod random;
+pub mod random;
+
+#[cfg(feature = "client")]
+mod macros;
+#[cfg(feature = "client")]
 pub mod sdk;

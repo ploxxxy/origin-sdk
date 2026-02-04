@@ -3,15 +3,26 @@ This crate handles the low-level networking, cryptography, and request/response 
 
 ## Usage
 ```rs
-use origin_sdk::{protocol::game::GetAllGameInfo, sdk::OriginSdk};
+use origin_sdk::{
+    protocol::game::GetAllGameInfo,
+    sdk::{ClientConfig, ORIGIN_SDK_PORT, OriginSdk},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to the Origin SDK server
-    let (client, _) = OriginSdk::connect("127.0.0.1:3216").await.unwrap();
+    // This configuration defines the game to the Origin SDK server
+    let config = ClientConfig {
+        content_id: "Origin.OFR.50.0004455".to_string(),
+        language: "".to_string(),
+        multiplayer_id: "".to_string(),
+        title: "".to_string(),
+        version_override: None,
+    };
 
-    let game_info = client.send_request(GetAllGameInfo {}).await.unwrap();
+    // Connect to the Origin SDK server with the given configuration and the default port
+    let (client, _) = OriginSdk::connect(config, ORIGIN_SDK_PORT).await.unwrap();
 
+    let game_info = client.request(GetAllGameInfo {}).await.unwrap();
     println!("{:#?}", game_info);
     // GetAllGameInfoResponse {
     //     up_to_date: true,

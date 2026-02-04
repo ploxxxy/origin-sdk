@@ -4,11 +4,11 @@ use origin_sdk::{
         profile::GetProfile,
         system::{GetConfig, GetInternetConnectedState},
     },
-    sdk::{ClientConfig, ORIGIN_SDK_PORT, OriginSdk},
+    sdk::{ClientConfig, OriginSdk, ORIGIN_SDK_PORT},
 };
 use std::error::Error;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -41,22 +41,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Query whether the SDK reports an active internet connection
     let state = client
-        .send_request(GetInternetConnectedState {})
+        .request(GetInternetConnectedState {})
         .await
         .unwrap();
     info!("Connected to the internet?: {}", state.connected);
 
     // Fetch the first user profile (index 0 = current user)
-    let profile = client.send_request(GetProfile { index: 0 }).await.unwrap();
+    let profile = client.request(GetProfile { index: 0 }).await.unwrap();
     info!("Profile: {:#?}", profile);
 
     // Fetch Service -> Facility configuration.
     // This would be used to determine which facilities to send requests to,
     // but EA Desktop uses "EbisuSDK" for all its services
-    let config = client.send_request(GetConfig {}).await.unwrap();
+    let config = client.request(GetConfig {}).await.unwrap();
     info!("Config: {:#?}", config);
 
-    let res = client.send_request(GetAllGameInfo {}).await.unwrap();
+    let res = client.request(GetAllGameInfo {}).await.unwrap();
     info!("Games: {:#?}", res);
 
     // Block until Ctrl+C is pressed. This keeps the process alive

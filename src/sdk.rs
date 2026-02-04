@@ -2,21 +2,21 @@ use std::{
     collections::HashMap,
     error::Error,
     sync::{
-        Arc,
         atomic::{AtomicU64, Ordering},
+        Arc,
     },
     time::Duration,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{
-        TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
     },
     sync::{
-        Mutex,
         mpsc::{self},
         oneshot::{self},
+        Mutex,
     },
     task::JoinHandle,
 };
@@ -25,8 +25,8 @@ use tracing::{debug, error, info, warn};
 use crate::{
     crypto::Crypto,
     protocol::{
-        Event, EventBody, Lsx, Message, Request, RequestBody, RequestResponse, Response,
-        ResponseBody, auth::ChallengeResponse,
+        auth::ChallengeResponse, Event, EventBody, Lsx, Message, Request, RequestBody,
+        RequestResponse, Response, ResponseBody,
     },
 };
 
@@ -327,6 +327,14 @@ impl OriginSdk {
         Ok(())
     }
 
+    #[deprecated = "use `request()` instead"]
+    pub async fn send_request<T>(&self, body: T) -> SdkResult<T::Response>
+    where
+        T: RequestResponse + Into<RequestBody>,
+    {
+        self.request(body).await
+    }
+
     /// Send a typed request to the server and await its response.
     ///
     /// ## How requests & responses are defined
@@ -364,7 +372,7 @@ impl OriginSdk {
     /// ```
     ///
     /// automatically deserializes the server response into the correct type.
-    pub async fn send_request<T>(&self, body: T) -> SdkResult<T::Response>
+    pub async fn request<T>(&self, body: T) -> SdkResult<T::Response>
     where
         T: RequestResponse + Into<RequestBody>,
     {
