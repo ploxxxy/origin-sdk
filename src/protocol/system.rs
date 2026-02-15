@@ -98,3 +98,33 @@ pub enum Setting {
     #[serde(rename = "IS_MANUAL_OFFLINE")]
     IsManualOffline,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Image {
+    #[serde(rename = "@ImageId")]
+    pub image_id: String,
+    #[serde(rename = "@Width")]
+    pub width: i32,
+    #[serde(rename = "@Height")]
+    pub height: i32,
+    #[serde(rename = "@ResourcePath")]
+    pub resource_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueryImage {
+    #[serde(rename = "@ImageId")]
+    pub image_id: String,
+    #[serde(rename = "@Width")]
+    pub width: i32,
+    #[serde(rename = "@Height")]
+    pub height: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueryImageResponse {
+    #[serde(rename = "@Result")]
+    pub result: i32,
+    #[serde(rename = "Image", default)]
+    pub images: Vec<Image>,
+}

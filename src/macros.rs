@@ -7,19 +7,19 @@ macro_rules! request_response {
 
                 fn extract_response(body: ResponseBody) -> Result<Self::Response, $crate::sdk::SdkError> {
 
-                    // Handle error response first
+                    // Handle ErrorSuccess response first
                     if let ResponseBody::ErrorSuccess(error) = &body {
-                        match error.code {
-                            $crate::protocol::errors::OriginError::Success => {
-                                // Success code, but only valid if we're expecting an ErrorSuccess
-                                // Fall through to let the match handle it
+                        if error.code.is_success() {
+                            // Received success, but it's only valid if we're expecting an ErrorSuccess
+                            // Fall through to let the second match handle it
+
+                            if error.code == $crate::protocol::errors::OriginError::Pending {
+                                tracing::info!("Request is pending: {}", error.description);
                             }
-                            $crate::protocol::errors::OriginError::Pending => {
-                                tracing::warn!("Request is pending: {}", error.description);
-                            }
-                            _ => {
-                                return Err($crate::sdk::SdkError::OriginError(error.code, error.description.clone()));
-                            }
+                        } else if error.code.is_error() {
+                            return Err($crate::sdk::SdkError::OriginError(error.code, error.description.clone()));
+                        } else if error.code.is_warning() {
+                            tracing::warn!("Request returned warning: {:?} - {}", error.code, error.description);
                         }
                     }
 
