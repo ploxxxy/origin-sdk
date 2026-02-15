@@ -32,4 +32,13 @@ pub enum BroadcastState {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct BroadcastStatus {
+    #[serde(rename = "@status")]
+    pub status: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BroadcastStop;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetBroadcastStatus;

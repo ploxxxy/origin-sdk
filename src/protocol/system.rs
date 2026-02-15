@@ -12,7 +12,25 @@ pub struct GetConfigResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct GetEnvironmentResponse {
+    #[serde(rename = "@Environment")]
+    pub environment: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetInternetConnectedState;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetSetting {
+    #[serde(rename = "@SettingId")]
+    pub setting_id: Setting,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetSettingResponse {
+    #[serde(rename = "@Setting")]
+    pub setting: String,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetSettings;
@@ -46,6 +64,12 @@ pub struct GetUtcTimeResponse {
 pub struct InternetConnectedState {
     #[serde(rename = "@connected")]
     pub connected: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MiddlewareConnectResult {
+    #[serde(rename = "@reason")]
+    pub reason: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

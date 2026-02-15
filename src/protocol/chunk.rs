@@ -173,3 +173,9 @@ pub struct SetDownloaderUtilization {
     #[serde(rename = "@Utilization")]
     pub utilization: f32,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StartDownload {
+    #[serde(rename = "@ItemId")]
+    pub item_id: String,
+}

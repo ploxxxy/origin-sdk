@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::presence::Presence;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct AddRecentPlayers {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "Player")]
+    pub player: Vec<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Friend {
     #[serde(rename = "@UserId")]
     pub user_id: u64,

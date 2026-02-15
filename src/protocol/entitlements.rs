@@ -20,8 +20,8 @@ pub struct ConsumeEntitlementResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Entitlement {
-    #[serde(rename = "@Type")]
-    pub r#type: String,
+    #[serde(rename = "@")]
+    pub type_: String,
     #[serde(rename = "@ItemId")]
     pub item_id: String,
     #[serde(rename = "@EntitlementId")]
@@ -65,23 +65,23 @@ pub struct ExtendTrialResponse {
     #[serde(rename = "@ResponseTicket")]
     pub response_ticket: String,
     #[serde(
-        rename = "@RetryCount",
-        default = "ExtendTrialResponse::default_retry_count"
+        default = "ExtendTrialResponse::default_retry_count",
+        rename = "@RetryCount"
     )]
     pub retry_count: i32,
     #[serde(
-        rename = "@RetryAfterFailSec",
-        default = "ExtendTrialResponse::default_retry_after_fail_sec"
+        default = "ExtendTrialResponse::default_retry_after_fail_sec",
+        rename = "@RetryAfterFailSec"
     )]
     pub retry_after_fail_sec: i32,
     #[serde(
-        rename = "@ExtendBeforeExpireSec",
-        default = "ExtendTrialResponse::default_extend_before_expire_sec"
+        default = "ExtendTrialResponse::default_extend_before_expire_sec",
+        rename = "@ExtendBeforeExpireSec"
     )]
     pub extend_before_expire_sec: i32,
     #[serde(
-        rename = "@SleepBeforeNukeSec",
-        default = "ExtendTrialResponse::default_sleep_before_nuke_sec"
+        default = "ExtendTrialResponse::default_sleep_before_nuke_sec",
+        rename = "@SleepBeforeNukeSec"
     )]
     pub sleep_before_nuke_sec: i32,
 }
@@ -109,6 +109,12 @@ impl ExtendTrialResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct InvalidateLicense {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryEntitlements {
     #[serde(rename = "@UserId")]
     pub user_id: u64,
@@ -122,17 +128,17 @@ pub struct QueryEntitlements {
     pub include_child_groups: bool,
     #[serde(rename = "@includeExpiredTrialDLC")]
     pub include_expired_trial_dlc: bool,
-    #[serde(rename = "FilterOffers", default)]
+    #[serde(rename = "FilterOffers")]
     pub filter_offers: Vec<String>,
-    #[serde(rename = "FilterItems", default)]
+    #[serde(rename = "FilterItems")]
     pub filter_items: Vec<String>,
-    #[serde(rename = "FilterGroups", default)]
+    #[serde(rename = "FilterGroups")]
     pub filter_groups: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryEntitlementsResponse {
-    #[serde(rename = "Entitlement", default)]
+    #[serde(rename = "Entitlements")]
     pub entitlements: Vec<Entitlement>,
 }
 
@@ -146,6 +152,25 @@ pub struct QueryManifest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryManifestResponse {
-    #[serde(rename = "Entitlement", default)]
+    #[serde(rename = "Entitlements")]
     pub entitlements: Vec<Entitlement>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RefreshEntitlements;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestLicense {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "@RequestTicket")]
+    pub request_ticket: String,
+    #[serde(rename = "@TicketEngine")]
+    pub ticket_engine: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestLicenseResponse {
+    #[serde(rename = "@License")]
+    pub license: String,
 }

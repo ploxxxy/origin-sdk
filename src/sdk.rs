@@ -438,4 +438,42 @@ impl OriginSdk {
             }
         }
     }
+
+    pub async fn request_unknown(&self, body: RequestBody) -> SdkResult<ResponseBody> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+
+        {
+            let mut pending = self.pending_requests.lock().await;
+            pending.insert(id, tx);
+        }
+
+        let request = Request {
+            recipient: "EbisuSDK".to_string(),
+            id: id.to_string(),
+            body,
+        };
+
+        let lsx = Lsx {
+            message: Message::Request(request),
+        };
+
+        let serialized = quick_xml::se::to_string(&lsx)?;
+        let encrypted = self.crypto.encrypt(&serialized)?;
+        let hex = hex::encode(&encrypted);
+
+        {
+            let mut writer = self.writer.lock().await;
+            Self::send_raw(&mut writer, hex.into_bytes()).await?;
+        }
+
+        match tokio::time::timeout(Duration::from_secs(5), rx).await {
+            Ok(Ok(response)) => Ok(response.body),
+            Ok(Err(_)) => Err(SdkError::Other("Channel closed".to_string())),
+            Err(_) => {
+                self.pending_requests.lock().await.remove(&id);
+                Err(SdkError::Other("Timeout".to_string()))
+            }
+        }
+    }
 }

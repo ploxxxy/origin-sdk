@@ -68,6 +68,12 @@ pub enum IgoWindow {
 pub struct MinimizeRequest;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct OverlayStateChanged {
+    #[serde(rename = "@State")]
+    pub state: IgoState,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ShowIgo {
     #[serde(rename = "@bShow")]
     pub b_show: bool,

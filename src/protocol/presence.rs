@@ -144,3 +144,19 @@ pub struct SetPresenceVisibility {
     #[serde(rename = "@Visible")]
     pub visible: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubscribePresence {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "Users")]
+    pub users: Vec<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnsubscribePresence {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "Users")]
+    pub users: Vec<u64>,
+}

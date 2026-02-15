@@ -3,6 +3,44 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::entitlements::Entitlement;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct Catalog {
+    #[serde(rename = "@Name")]
+    pub name: String,
+    #[serde(rename = "@Status")]
+    pub status: String,
+    #[serde(rename = "@Currency")]
+    pub currency_type: String,
+    #[serde(rename = "@Group")]
+    pub group: String,
+    #[serde(rename = "@CatalogId")]
+    pub catalog_id: u64,
+    #[serde(rename = "Category", default)]
+    pub categories: Vec<Category>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Category {
+    #[serde(rename = "@Type")]
+    pub r#type: String,
+    #[serde(rename = "@CategoryId")]
+    pub category_id: String,
+    #[serde(rename = "@ParentId")]
+    pub parent_id: String,
+    #[serde(rename = "@Name")]
+    pub name: String,
+    #[serde(rename = "@Description")]
+    pub description: String,
+    #[serde(rename = "@MostPopular")]
+    pub most_popular: i32,
+    #[serde(rename = "@ImageId")]
+    pub image_id: String,
+    #[serde(rename = "Category", default)]
+    pub categories: Vec<Category>,
+    #[serde(rename = "Offer", default)]
+    pub offers: Vec<Offer>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Checkout {
     #[serde(rename = "@UserId")]
     pub user_id: u64,
@@ -10,6 +48,73 @@ pub struct Checkout {
     pub currency: String,
     #[serde(rename = "Offers", default)]
     pub offers: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetermineCommerceCurrency {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Store {
+    #[serde(rename = "Catalog", default)]
+    pub catalogs: Vec<Catalog>,
+    #[serde(rename = "@Name")]
+    pub name: String,
+    #[serde(rename = "@Title")]
+    pub title: String,
+    #[serde(rename = "@Group")]
+    pub group: String,
+    #[serde(rename = "@Status")]
+    pub status: String,
+    #[serde(rename = "@DefaultCurrency")]
+    pub default_currency: String,
+    #[serde(rename = "@StoreId")]
+    pub store_id: u64,
+    #[serde(rename = "@IsDemoStore")]
+    pub is_demo_store: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SelectStore {
+    #[serde(rename = "@StoreId")]
+    pub store_id: u64,
+    #[serde(rename = "@CatalogId")]
+    pub catalog_id: u64,
+    #[serde(rename = "@EWalletCategoryId")]
+    pub e_wallet_category_id: u64,
+    #[serde(rename = "@VirtualCurrency")]
+    pub virtual_currency: String,
+    #[serde(rename = "@LockboxUrl")]
+    pub lockbox_url: String,
+    #[serde(rename = "@SuccessUrl")]
+    pub success_url: String,
+    #[serde(rename = "@FailedUrl")]
+    pub failed_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetCatalog {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetCatalogResponse {
+    #[serde(rename = "Catalog", default)]
+    pub catalogs: Vec<Catalog>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetStore {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "@StoreId")]
+    pub store_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetStoreResponse {
+    #[serde(rename = "Store", default)]
+    pub stores: Vec<Store>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,6 +187,20 @@ pub struct Offer {
 pub struct PurchaseEvent {
     #[serde(rename = "@manifest")]
     pub manifest: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueryCategories {
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "FilterCategories", default)]
+    pub filter_categories: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueryCategoriesResponse {
+    #[serde(rename = "Categories", default)]
+    pub categories: Vec<Category>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

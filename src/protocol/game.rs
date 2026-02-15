@@ -170,6 +170,18 @@ pub struct GetAllGameInfoResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct GetGameInfo {
+    #[serde(rename = "@GameInfoId")]
+    pub game_info_id: GameInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetGameInfoResponse {
+    #[serde(rename = "@GameInfo")]
+    pub game_info: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryContent {
     #[serde(rename = "@UserId")]
     pub user_id: u64,
@@ -209,6 +221,12 @@ pub struct SendGameMessage {
     pub game_id: String,
     #[serde(rename = "@Message")]
     pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetDlcInstalledState {
+    #[serde(rename = "Offers")]
+    pub offers: Vec<Dlc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

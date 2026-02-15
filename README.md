@@ -20,9 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Connect to the Origin SDK server with the given configuration and the default port
-    let (client, _) = OriginSdk::connect(config, ORIGIN_SDK_PORT).await.unwrap();
+    let (client, _) = OriginSdk::connect(config, ORIGIN_SDK_PORT).await?;
 
-    let game_info = client.request(GetAllGameInfo {}).await.unwrap();
+    let game_info = client.request(GetAllGameInfo {}).await?;
     println!("{:#?}", game_info);
     // GetAllGameInfoResponse {
     //     up_to_date: true,

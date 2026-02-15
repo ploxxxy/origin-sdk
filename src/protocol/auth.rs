@@ -7,6 +7,12 @@ pub struct AuthCode {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct AuthToken {
+    #[serde(rename = "@value")]
+    pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Challenge {
     #[serde(rename = "@key")]
     pub key: String,
@@ -48,7 +54,14 @@ pub struct GetAuthCode {
     pub user_id: u64,
     #[serde(rename = "@ClientId")]
     pub client_id: String,
+    #[serde(rename = "@Scope")]
+    pub scope: String,
+    #[serde(rename = "@AppendAuthSource")]
+    pub append_auth_source: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetAuthToken;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Login {
@@ -74,4 +87,30 @@ pub enum LoginReasonCode {
     InvalidCredentials,
     #[serde(rename = "ACCESSTOKEN_REFRESH_ERROR")]
     AccesstokenRefreshError,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Logout {
+    #[serde(rename = "@UserIndex")]
+    pub user_index: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PostWincodes {
+    #[serde(rename = "Code", default)]
+    pub codes: Vec<Wincode>,
+    #[serde(rename = "@AuthCode")]
+    pub auth_code: String,
+    #[serde(rename = "@UserId")]
+    pub user_id: u64,
+    #[serde(rename = "@PersonaId")]
+    pub persona_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Wincode {
+    #[serde(rename = "@key")]
+    pub key: String,
+    #[serde(rename = "@value")]
+    pub value: String,
 }
